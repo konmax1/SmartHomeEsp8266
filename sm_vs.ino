@@ -39,7 +39,7 @@ char t3[20];
 #define BUFFER_SIZE 100
 
 void callback(const MQTT::Publish& pub)
- {
+{
 
 	Serial.println(pub.topic());
 	Serial.println("stream");
@@ -62,56 +62,52 @@ void callback(const MQTT::Publish& pub)
 
 
 void setup(void) {
-  Serial.begin(115200);
-  delay(10);
-  dht.begin();
+	Serial.begin(115200);
+	delay(10);
+	dht.begin();
 
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi connected");
-  delay(1000);
-
-  //initOTA();
-
-
-
+	Serial.print("Connecting to ");
+	Serial.println(ssid);
+	WiFi.begin(ssid, password);
+	while (WiFi.status() != WL_CONNECTED) {
+		delay(500);
+		Serial.print(".");
+	}
+	Serial.println("");
+	Serial.println("WiFi connected");
+	delay(1000);
+	initInternalGeneral();
 }
 
 
 
 void otaTask() {
-  ArduinoOTA.handle();
+	ArduinoOTA.handle();
 }
 
 void tempTask() {
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
-  //!client.publish("/esp/temp", String(t));
- //! client.publish("/esp/hum", String(h));
+	float t = dht.readTemperature();
+	float h = dht.readHumidity();
+	//!client.publish("/esp/temp", String(t));
+   //! client.publish("/esp/hum", String(h));
 }
 
 void mqttTask() {
-  if (!client.connected()) {
-    if (client.connect(clientSensor)) {
-      Serial.println("MQTT connected");
-    }
-    else {
-      Serial.println("MQTT not connected");
-    }
-    initInternal();
-    client.set_callback(callback);
-    //client.subscribe("/esp/led1");
-    //client.publish("/esp/led1", "0");
-  }
-  if (client.connected()) {
-    client.loop();
-  }
+	if (!client.connected()) {
+		if (client.connect(clientSensor)) {
+			Serial.println("MQTT connected");
+		}
+		else {
+			Serial.println("MQTT not connected");
+		}
+		initInternalStructure();
+		client.set_callback(callback);
+		//client.subscribe("/esp/led1");
+		//client.publish("/esp/led1", "0");
+	}
+	if (client.connected()) {
+		client.loop();
+	}
 }
 
 
@@ -123,20 +119,26 @@ unsigned long mqttMillis = 0;
 unsigned long currentMillis = 0;
 const long interval = 1000;
 void loop() {
-  currentMillis = millis();
-  if (currentMillis - otaMillis >= 1000) {
-    otaMillis = currentMillis;
-    otaTask();
-  }
-  if (currentMillis - tempMillis >= 2000) {
-    tempMillis = currentMillis;
-    tempTask();
-  }
-  if (currentMillis - mqttMillis >= 20) {
-    mqttMillis = currentMillis;
-    mqttTask();
-  }
-  delay(1);
+	currentMillis = millis();
+	int32_t inputFunc = 0;
+	if (currentMillis - otaMillis >= 1000) {
+		inputFunc = 1;
+		otaMillis = currentMillis;
+		otaTask();
+	}
+	if (currentMillis - tempMillis >= 2000) {
+		inputFunc = 1;
+		tempMillis = currentMillis;
+		tempTask();
+	}
+	if (currentMillis - mqttMillis >= 20) {
+		inputFunc = 1;
+		mqttMillis = currentMillis;
+		mqttTask();
+	}
+	if (inputFunc == 0) {
+		delay(10);
+	}
 }
 
 

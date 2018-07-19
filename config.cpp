@@ -54,34 +54,24 @@ void gpioIRQ() {// Not called, but simple
 
 }
 
-void IntStructure::addLed(uint8_t _gpio, uint8_t _val) {
-  LED led;
-  led.gpio = _gpio;
-  sprintf(led.name, "%s/%s/led/%d", nameSensor, clientSensor, _gpio);
-
- client.subscribe(led.name);
- client.publish(String(led.name), String(_val));
-
-  Serial.printf("Add led gpio=%d val=%d name =%s\n", _gpio, _val, led.name);
-  leds.insert(leds.end(), led);
-  pinMode(_gpio, OUTPUT);
-  digitalWrite(_gpio, _val);
-}
-
-void IntStructure::setLedVal(uint8_t _id, uint8_t _val) {
-  if ( _id >= leds.size())
-    return;
-}
-
-
-void IntStructure::initGPIO(uint8_t _gpio, uint8_t _mode, int _modeIrq) {
+void IntStructure::initGPIO(uint8_t _gpio, uint8_t _mode, uint8_t _val, int _modeIrq) {
   char ch[60];
-  //Serial.printf("Add gpio input = %d mode = %d modeIrq = %d\n", _gpio, _mode, _modeIrq);
-  sprintf(&ch[0], "%s/%s/button/%d", nameSensor, clientSensor, _gpio);
-  Serial.printf("Add gpio input = %s\n", &ch[0]);
-  client.publish(ch, String(digitalRead(_gpio)));
   pinMode(_gpio, _mode);
-  attachInterruptMy(_gpio, gpioIRQ, _modeIrq);
+  if ((_mode == OUTPUT_OPEN_DRAIN) || (_mode == OUTPUT)) {
+	  sprintf(ch, "%s/%s/pinOut/%d", nameSensor, clientSensor, _gpio);
+	  Serial.printf("Add led gpio=%d val=%d name =%s\n", _gpio, _val, ch);
+	  client.subscribe(ch);
+	  client.publish(String(ch), String(_val));
+  }
+  if ((_mode == INPUT) || (_mode == INPUT_PULLUP) || (_mode == INPUT_PULLDOWN_16)) {
+	  sprintf(&ch[0], "%s/%s/pinInput/%d", nameSensor, clientSensor, _gpio);
+	  Serial.printf("Add gpio input = %s\n", &ch[0]);
+	  client.publish(ch, String(digitalRead(_gpio)));
+	  if (_modeIrq != 0) {
+		  attachInterruptMy(_gpio, gpioIRQ, _modeIrq);
+	  }
+  }
+
 }
 
 
@@ -117,7 +107,29 @@ void initOTA() {
 }
 
 
-void initInternal() {
+void initInternalGeneral() {
+
+	Serial.printf("SPIFFS return %d\n", SPIFFS.begin());
+	File configFile = SPIFFS.open("/configGeneral.ini", "r");
+	if (!configFile)	{
+		Serial.println("Failed to open configGeneral file");
+		return;
+	}
+	JsonObject &root = jsonBuffer.parseObject(configFile); 
+	if (!root.success()) {
+		Serial.println(F("Failed to parce JSON"));
+		return;
+	}
+	strcpy(clientSensor, root["clientSensor"]);
+	initOTA();
+
+
+
+
+	SPIFFS.end();
+}
+
+void initInternalStructure() {
   const char *strJson;
   Serial.printf("SPIFFS return %d\n", SPIFFS.begin());
   FSInfo fs_info;
@@ -134,37 +146,44 @@ void initInternal() {
     Serial.println(F("Failed to parce JSON"));
     return;
   }
-  JsonArray& leds = root["leds"];
-  JsonArray& buttons = root["buttons"];
-  Serial.printf("leds = %d\n", leds.size());
-  Serial.printf("buttons = %d\n", buttons.size());
-  strcpy(clientSensor, root["clientSensor"]);
+  JsonArray& gpios = root["GPIOS"];
+  uint8_t pinmode = INPUT;
+  uint8_t gpio = 0;
+  int irqmode = 0;
+  for (volatile int i = 0; i < gpios.size(); i++) {
+	  pinmode = INPUT;
+	  irqmode = 0;
 
-  initOTA();
+	  strJson = gpios[i]["type"];
+	  if (strcmp(strJson, "INPUT_PULLUP") == 0) {
+		  pinmode = INPUT_PULLUP;
+	  }
+	  else if (strcmp(strJson, "INPUT") == 0) {
+		  pinmode = INPUT;
+	  }
+	  else if (strcmp(strJson, "OUTPUT_OPEN_DRAIN") == 0) {
+		  pinmode = OUTPUT_OPEN_DRAIN;
+	  }
+	  else if (strcmp(strJson, "OUTPUT") == 0) {
+		  pinmode = OUTPUT;
+	  }
 
-  for (volatile int i = 0; i < leds.size(); i++) {
-    initparam.addLed(leds[i]["gpio"], leds[i]["initval"]);
-  }
-  for (volatile int i = 0; i < buttons.size(); i++) {
-    uint8_t pinmode;
-    uint8_t gpio;
-    int irqmode;
-    strJson = buttons[i]["pull"];
-    if (strcmp(strJson, "INPUT_PULLUP") == 0) {
-      pinmode = INPUT_PULLUP;
-    } else if (strcmp(strJson, "INPUT") == 0) {
-      pinmode = INPUT;
-    }
-    strJson = buttons[i]["irqtype"];
-    if (strcmp(strJson, "CHANGE") == 0)    {
-      irqmode = CHANGE;
-    } else if (strcmp(strJson, "RISING") == 0)    {
-      irqmode = RISING;
-    } else if (strcmp(strJson, "FALLING") == 0)    {
-      irqmode = FALLING;
-    }
-    gpio =  buttons[i]["gpio"];
-    initparam.initGPIO(gpio, pinmode, irqmode);
+
+	  strJson = gpios[i]["irqtype"];
+	  if (strcmp(strJson, "CHANGE") == 0) {
+		  irqmode = CHANGE;
+	  }
+	  else if (strcmp(strJson, "RISING") == 0) {
+		  irqmode = RISING;
+	  }
+	  else if (strcmp(strJson, "FALLING") == 0) {
+		  irqmode = FALLING;
+	  }
+	  else if (strcmp(strJson, "NONE") == 0) {
+		  irqmode = 0;
+	  }
+	  gpio = gpios[i]["gpio"];
+	  initparam.initGPIO(gpio, pinmode, gpios[i]["initval"], irqmode);
   }
   SPIFFS.end();
 }

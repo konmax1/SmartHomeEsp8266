@@ -34,27 +34,14 @@ extern char clientSensor[20];
 
 
 void initOTA();
-void initInternal();
-
-
-struct BUTTON{
-  uint8_t gpio;
-};
-
-struct LED{
-  uint8_t gpio;
-  char name[39];
-};
+void initInternalStructure();
+void initInternalGeneral();
 
 class IntStructure{
   private:
-    std::vector<BUTTON> buttons;
-    std::vector<LED> leds;
   public:
     IntStructure();
-    void addLed(uint8_t _gpio, uint8_t _val = 0);  
-    void setLedVal(uint8_t _id, uint8_t _val = 0);  
-    void initGPIO(uint8_t _gpio, uint8_t _mode, int _modeIrq);
+	void initGPIO(uint8_t _gpio, uint8_t _mode, uint8_t _val, int _modeIrq);
 };
 extern IntStructure initparam;
 
