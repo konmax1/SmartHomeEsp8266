@@ -19,8 +19,7 @@
 #include <MQTT.h>
 #include <FS.h>
 #include <ArduinoJson.h>
-#include "DHT.h"
-#include <DHT_U.h>
+#include <SparkFunBME280.h>
 
 extern IPAddress serverIP;
 extern WiFiClient wclient;
@@ -34,15 +33,20 @@ extern char clientSensor[20];
 
 
 void initOTA();
-void initInternalStructure();
-void initInternalGeneral();
 
 class IntStructure{
   private:
   public:
+
+	  std::vector<BME280> vect_bme280;
+
     IntStructure();
+
+	void initInternalStructure();
+	void initInternalGeneral();
 	void initGPIO(uint8_t _gpio, uint8_t _mode, uint8_t _val, int _modeIrq);
 };
+
 extern IntStructure initparam;
 
 #endif

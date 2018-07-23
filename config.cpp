@@ -61,7 +61,8 @@ void IntStructure::initGPIO(uint8_t _gpio, uint8_t _mode, uint8_t _val, int _mod
 	  sprintf(ch, "%s/%s/pinOut/%d", nameSensor, clientSensor, _gpio);
 	  Serial.printf("Add led gpio=%d val=%d name =%s\n", _gpio, _val, ch);
 	  client.subscribe(ch);
-	  client.publish(String(ch), String(_val));
+	  //client.publish(String(ch), String(_val));
+	  //digitalWrite(_gpio, _val);
   }
   if ((_mode == INPUT) || (_mode == INPUT_PULLUP) || (_mode == INPUT_PULLDOWN_16)) {
 	  sprintf(&ch[0], "%s/%s/pinInput/%d", nameSensor, clientSensor, _gpio);
@@ -71,7 +72,7 @@ void IntStructure::initGPIO(uint8_t _gpio, uint8_t _mode, uint8_t _val, int _mod
 		  attachInterruptMy(_gpio, gpioIRQ, _modeIrq);
 	  }
   }
-
+  client.loop();
 }
 
 
@@ -107,20 +108,24 @@ void initOTA() {
 }
 
 
-void initInternalGeneral() {
+void IntStructure::initInternalGeneral() {
 
 	Serial.printf("SPIFFS return %d\n", SPIFFS.begin());
 	File configFile = SPIFFS.open("/configGeneral.ini", "r");
 	if (!configFile)	{
 		Serial.println("Failed to open configGeneral file");
+		initOTA();
 		return;
 	}
 	JsonObject &root = jsonBuffer.parseObject(configFile); 
 	if (!root.success()) {
-		Serial.println(F("Failed to parce JSON"));
+		Serial.println(F("Failed to parce JSON_Gen"));
+		initOTA();
 		return;
 	}
 	strcpy(clientSensor, root["clientSensor"]);
+
+	Serial.println(F("Set OTA"));
 	initOTA();
 
 
@@ -129,7 +134,7 @@ void initInternalGeneral() {
 	SPIFFS.end();
 }
 
-void initInternalStructure() {
+void IntStructure::initInternalStructure() {
   const char *strJson;
   Serial.printf("SPIFFS return %d\n", SPIFFS.begin());
   FSInfo fs_info;
@@ -143,13 +148,13 @@ void initInternalStructure() {
   }
   JsonObject &root = jsonBuffer.parseObject(configFile);
   if (!root.success()) {
-    Serial.println(F("Failed to parce JSON"));
+    Serial.println(F("Failed to parce JSON_CNFG"));
     return;
   }
-  JsonArray& gpios = root["GPIOS"];
   uint8_t pinmode = INPUT;
   uint8_t gpio = 0;
   int irqmode = 0;
+  JsonArray& gpios = root["GPIOS"];
   for (volatile int i = 0; i < gpios.size(); i++) {
 	  pinmode = INPUT;
 	  irqmode = 0;
@@ -184,6 +189,38 @@ void initInternalStructure() {
 	  }
 	  gpio = gpios[i]["gpio"];
 	  initparam.initGPIO(gpio, pinmode, gpios[i]["initval"], irqmode);
+  }
+  
+  
+  JsonArray& sensors = root["SENSORS"];
+  for (volatile int i = 0; i < sensors.size(); i++) {
+	  strJson = sensors[i]["type"];
+	  uint8_t addr = sensors[i]["adrress"];
+	  if (strcmp(strJson, "BME280") == 0) {
+		  Wire.begin();		  
+		  int32_t stat = 0;
+		  for (volatile int i = 0; i < vect_bme280.size(); i++) {
+			  if (addr == vect_bme280[i].settings.I2CAddress) {
+				  stat = 1;
+				  break;
+			  }
+		  }
+		  if (stat == 0) {
+			  BME280 bme;
+			  bme.setI2CAddress(addr);
+			  if (bme.begin() == false) {
+				  bme.setTempOverSample(2);
+				  bme.setPressureOverSample(8);
+				  bme.setHumidityOverSample(4);
+				  bme.setFilter(3);
+				  bme.setStandbyTime(0);
+				  bme.setMode(3);
+				  client.publish(String("/notBME"), String(0));
+				  Serial.printf("BME not start addr %x", addr);
+			  }
+			  vect_bme280.push_back(bme);
+		  }
+	  }
   }
   SPIFFS.end();
 }

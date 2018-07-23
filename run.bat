@@ -1,0 +1,2 @@
+python.exe C:\Users\konmax\AppData\Local\ARDUIN~1\packages\esp8266\hardware\esp8266\2415C3~1.1/tools/espota.py -i "192.168.0.17" -p "8266" "--auth=" -f C:\Users\konmax\AppData\Local\Temp\VMBuilds\sm_vs\ESP826~2\Release/SM_VSI~1.BIN
+@pause

@@ -5,8 +5,7 @@
 
 */
 
-#include <DHT_U.h>
-#include <DHT.h>
+#include <SparkFunBME280.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <WiFiServerSecure.h>
@@ -26,11 +25,6 @@
 #include <PubSubClient.h>
 #include <MQTT.h>
 #include "config.h"
-#define DHTTYPE DHT22
-
-
-const int DHTPin = 5;
-DHT dht(DHTPin, DHTTYPE);
 
 char t1[20];
 char t2[20];
@@ -38,19 +32,19 @@ char t3[20];
 
 #define BUFFER_SIZE 100
 
-void callback(const MQTT::Publish& pub)
+
+void callbackMQTT(const MQTT::Publish& pub)
 {
 
-	Serial.println(pub.topic());
-	Serial.println("stream");
+	//Serial.println(pub.topic());
 	uint8_t gpio;
 	String str = pub.topic();
 	str.replace("/", "\t");
-	Serial.printf("topic is: %s\n", str.c_str());
+	//Serial.printf("topic is: %s\n", str.c_str());
 	sscanf(str.c_str(), "%s%s%s%d", &t1, &t2, &t3, &gpio);
-	Serial.printf("Line is %s|%s|%s|%d\n", t1, t2, t3, gpio);
-	if (strcmp(t3, "led") == 0) {
-		digitalWrite(gpio, pub.payload_string().toInt());
+	//Serial.printf("Line is %s|%s|%s|%d\n", t1, t2, t3, gpio);
+	if (strcmp(t3, "pinOut") == 0) {
+		digitalWrite(gpio, (1 - pub.payload_string().toInt()));
 	}
 	else
 	{
@@ -62,9 +56,8 @@ void callback(const MQTT::Publish& pub)
 
 
 void setup(void) {
-	Serial.begin(115200);
+	Serial.begin(256000);
 	delay(10);
-	dht.begin();
 
 	Serial.print("Connecting to ");
 	Serial.println(ssid);
@@ -76,7 +69,7 @@ void setup(void) {
 	Serial.println("");
 	Serial.println("WiFi connected");
 	delay(1000);
-	initInternalGeneral();
+	initparam.initInternalGeneral();
 }
 
 
@@ -85,9 +78,16 @@ void otaTask() {
 	ArduinoOTA.handle();
 }
 
-void tempTask() {
-	float t = dht.readTemperature();
-	float h = dht.readHumidity();
+void bme280Task() {
+	char tmp[60];
+	for (volatile int i = 0; i < initparam.vect_bme280.size(); i++) {
+		sprintf(tmp, "%s/%s/bme280/%d/temp", nameSensor, clientSensor, i);
+		client.publish(tmp, String(initparam.vect_bme280[i].readTempC()));
+		sprintf(tmp, "%s/%s/bme280/%d/hum", nameSensor, clientSensor, i);
+		client.publish(tmp, String(initparam.vect_bme280[i].readFloatHumidity()));
+		sprintf(tmp, "%s/%s/bme280/%d/press", nameSensor, clientSensor, i);
+		client.publish(tmp, String(initparam.vect_bme280[i].readFloatPressure() * 0.00750063755419211));
+	}
 	//!client.publish("/esp/temp", String(t));
    //! client.publish("/esp/hum", String(h));
 }
@@ -96,14 +96,12 @@ void mqttTask() {
 	if (!client.connected()) {
 		if (client.connect(clientSensor)) {
 			Serial.println("MQTT connected");
+			client.set_callback(callbackMQTT);
+			initparam.initInternalStructure();
 		}
 		else {
 			Serial.println("MQTT not connected");
 		}
-		initInternalStructure();
-		client.set_callback(callback);
-		//client.subscribe("/esp/led1");
-		//client.publish("/esp/led1", "0");
 	}
 	if (client.connected()) {
 		client.loop();
@@ -114,11 +112,12 @@ void mqttTask() {
 
 
 unsigned long otaMillis = 0;
-unsigned long tempMillis = 0;
+unsigned long bme280Millis = 0;
 unsigned long mqttMillis = 0;
 unsigned long currentMillis = 0;
 const long interval = 1000;
 void loop() {
+	int32_t mqtt_time = 20;
 	currentMillis = millis();
 	int32_t inputFunc = 0;
 	if (currentMillis - otaMillis >= 1000) {
@@ -126,15 +125,21 @@ void loop() {
 		otaMillis = currentMillis;
 		otaTask();
 	}
-	if (currentMillis - tempMillis >= 2000) {
+	if (currentMillis - bme280Millis >= 2050) {
 		inputFunc = 1;
-		tempMillis = currentMillis;
-		tempTask();
+		bme280Millis = currentMillis;
+		bme280Task();
 	}
-	if (currentMillis - mqttMillis >= 20) {
+	if (currentMillis - mqttMillis >= mqtt_time) {
 		inputFunc = 1;
 		mqttMillis = currentMillis;
 		mqttTask();
+		if (client.connected()) {
+			mqtt_time = 20;
+		}
+		else {
+			mqtt_time = 1000;
+		}
 	}
 	if (inputFunc == 0) {
 		delay(10);
